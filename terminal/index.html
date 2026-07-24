@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CHINEME-OS — Chineme Derek Uba</title>
+<meta name="description" content="Chineme Derek Uba — Software Engineer (AI/ML + Backend). An interactive terminal resume. Type help.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23020703'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='18' fill='%233bff73' text-anchor='middle'%3E%26%23x276F;_%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --fg:#3bff73;
+    --fg-dim:#1e9a48;
+    --fg-faint:rgba(59,255,115,.14);
+    --fg-glow:rgba(59,255,115,.55);
+    --bg:#020703;
+    --bg-term:rgba(2,10,4,.82);
+    --accent:#9dffbe;
+    --err:#ff5f56;
+    --warn:#ffbd2e;
+    --sel:rgba(59,255,115,.25);
+    --font:"JetBrains Mono","Fira Code",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--fg);
+    font-family:var(--font);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    transition:background .6s ease;
+  }
+  ::selection{background:var(--sel);color:var(--accent)}
+  a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+  a:hover{background:var(--fg-faint)}
+
+  /* ---------- layers ---------- */
+  #bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+  #app{position:fixed;inset:0;z-index:2;display:flex;align-items:stretch;justify-content:center;
+       padding:clamp(8px,2.2vmin,28px);height:100dvh}
+  #crt{position:fixed;inset:0;z-index:6;pointer-events:none}
+  #crt::before{ /* scanlines */
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.24) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;
+  }
+  #crt::after{ /* vignette + slight aperture glow */
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(ellipse 110% 90% at 50% 45%,transparent 55%,rgba(0,0,0,.5) 100%);
+  }
+  #flicker{position:fixed;inset:0;z-index:5;pointer-events:none;background:var(--fg);opacity:.012;
+    animation:flick 4s infinite steps(1)}
+  @keyframes flick{
+    0%,100%{opacity:.012}7%{opacity:.02}8%{opacity:.008}31%{opacity:.017}
+    32%{opacity:.01}53%{opacity:.022}54%{opacity:.012}79%{opacity:.019}80%{opacity:.01}
+  }
+
+  /* ---------- terminal window ---------- */
+  #term{
+    position:relative;display:flex;flex-direction:column;width:min(1060px,100%);
+    background:var(--bg-term);
+    border:1px solid var(--fg-dim);
+    border-radius:10px;
+    box-shadow:0 0 0 1px rgba(0,0,0,.6),0 0 44px -6px var(--fg-glow),0 26px 70px rgba(0,0,0,.65),inset 0 0 90px rgba(0,0,0,.45);
+    overflow:hidden;
+    backdrop-filter:blur(3px);
+    -webkit-backdrop-filter:blur(3px);
+    transition:box-shadow .6s ease,border-color .6s ease;
+  }
+  #titlebar{
+    display:flex;align-items:center;gap:10px;flex:0 0 auto;
+    padding:9px 14px;
+    background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,0)),rgba(0,0,0,.45);
+    border-bottom:1px solid var(--fg-dim);
+    user-select:none;font-size:12px;letter-spacing:.04em;color:var(--fg-dim);
+  }
+  .tdots{display:flex;gap:7px}
+  .tdot{width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;padding:0;
+    transition:transform .12s ease,filter .12s ease}
+  .tdot:hover{transform:scale(1.18);filter:brightness(1.25)}
+  .tdot.r{background:#ff5f56}.tdot.y{background:#ffbd2e}.tdot.g{background:#27c93f}
+  #titletext{flex:1;text-align:center;color:var(--fg);opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    text-shadow:0 0 8px var(--fg-glow)}
+  #achChip{
+    flex:0 0 auto;font-family:var(--font);font-size:11px;letter-spacing:.05em;
+    color:var(--fg);background:var(--fg-faint);border:1px solid var(--fg-dim);
+    border-radius:99px;padding:3px 10px;cursor:pointer;transition:background .2s,transform .12s;
+  }
+  #achChip:hover{background:var(--sel);transform:translateY(-1px)}
+
+  #screen{
+    flex:1;overflow-y:auto;overflow-x:hidden;padding:18px 20px 26px;
+    font-size:14px;line-height:1.6;
+    scrollbar-width:thin;scrollbar-color:var(--fg-dim) transparent;
+    overscroll-behavior:contain;cursor:text;
+  }
+  #screen::-webkit-scrollbar{width:8px}
+  #screen::-webkit-scrollbar-thumb{background:var(--fg-dim);border-radius:4px}
+  .line{white-space:pre-wrap;overflow-wrap:break-word;min-height:1.2em;
+    text-shadow:0 0 7px var(--fg-glow)}
+  .dim{color:var(--fg-dim);text-shadow:none}
+  .hl{color:var(--accent);font-weight:700}
+  .err{color:var(--err);text-shadow:0 0 7px rgba(255,95,86,.5)}
+  .warn{color:var(--warn);text-shadow:0 0 7px rgba(255,189,46,.45)}
+  .ok{color:var(--fg)}
+  .ascii{font-size:clamp(4.5px,1.28vw,12.5px);line-height:1.25;white-space:pre;overflow-x:auto;
+    text-shadow:0 0 9px var(--fg-glow);margin:6px 0}
+  .rule{color:var(--fg-dim);text-shadow:none;opacity:.9}
+  .prompt{color:var(--accent);font-weight:700}
+  .echo-cmd{color:var(--fg)}
+
+  /* input row (desktop mirror) */
+  #inputrow{display:flex;align-items:baseline;flex-wrap:wrap}
+  #typed{white-space:pre-wrap;overflow-wrap:anywhere}
+  #cursor{display:inline-block;width:.62em;height:1.15em;background:var(--fg);vertical-align:text-bottom;
+    margin-left:1px;box-shadow:0 0 8px var(--fg-glow);animation:blink 1.06s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* hidden capture input lives in bottom bar */
+  #kbdwrap{flex:0 0 auto}
+  #kbd{
+    font-family:var(--font);font-size:16px;color:var(--fg);
+    background:transparent;border:none;outline:none;caret-color:var(--fg);
+    width:100%;
+  }
+  /* desktop: capture-only, invisible */
+  @media (min-width:761px){
+    #palette{display:none}
+    #kbdwrap{position:absolute;left:0;bottom:0;width:10px;height:1px;overflow:hidden;opacity:0}
+  }
+  /* mobile: visible palette + real input bar */
+  @media (max-width:760px){
+    #app{padding-top:calc(48px + env(safe-area-inset-top,0px))} /* clear the recruiter button */
+    #screen{font-size:13px;padding:12px 12px 14px}
+    #inputrow{display:none}
+    #kbdwrap{border-top:1px solid var(--fg-dim);background:rgba(0,0,0,.5)}
+    #palette{
+      display:flex;gap:6px;overflow-x:auto;padding:8px 10px 2px;scrollbar-width:none;
+      -webkit-overflow-scrolling:touch;
+    }
+    #palette::-webkit-scrollbar{display:none}
+    .pal-btn{
+      flex:0 0 auto;font-family:var(--font);font-size:12px;color:var(--fg);
+      background:var(--fg-faint);border:1px solid var(--fg-dim);border-radius:6px;
+      padding:6px 10px;cursor:pointer;white-space:nowrap;
+    }
+    .pal-btn:active{background:var(--sel)}
+    #kbdline{display:flex;align-items:center;gap:8px;padding:8px 12px 10px}
+    #kbdline .prompt{font-size:13px;flex:0 0 auto}
+    #kbd{flex:1;min-width:0}
+    #titletext{font-size:10px}
+  }
+  #palette{}
+
+  /* ---------- recruiter button ---------- */
+  #recruiter{
+    position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:12px;z-index:20;
+    font-family:var(--font);font-size:12px;letter-spacing:.03em;
+    color:var(--bg);background:var(--fg);
+    border:1px solid var(--accent);border-radius:8px;padding:7px 12px;cursor:pointer;
+    box-shadow:0 0 18px -2px var(--fg-glow);font-weight:700;
+    transition:transform .12s ease,box-shadow .2s ease,background .6s;
+  }
+  #recruiter:hover{transform:translateY(-2px);box-shadow:0 0 26px 0 var(--fg-glow)}
+
+  /* ---------- toasts ---------- */
+  #toasts{position:fixed;top:calc(52px + env(safe-area-inset-top,0px));right:12px;z-index:40;
+    display:flex;flex-direction:column;gap:8px;pointer-events:none;max-width:min(320px,80vw)}
+  .toast{
+    font-family:var(--font);font-size:12px;color:var(--fg);
+    background:rgba(0,0,0,.85);border:1px solid var(--fg);border-radius:8px;
+    padding:10px 14px;box-shadow:0 0 22px -4px var(--fg-glow);
+    animation:toastin .35s cubic-bezier(.2,1.4,.4,1) both;
+  }
+  .toast .t-title{color:var(--accent);font-weight:700;letter-spacing:.08em;font-size:10px}
+  .toast.out{animation:toastout .4s ease both}
+  @keyframes toastin{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}
+  @keyframes toastout{to{transform:translateX(40px);opacity:0}}
+
+  /* ---------- chess ---------- */
+  .chess-wrap{margin:10px 0 6px;max-width:420px}
+  .chess-head{font-size:11px;color:var(--fg-dim);margin-bottom:6px;line-height:1.5}
+  .chess-status{font-size:12.5px;color:var(--accent);margin:7px 0 4px;min-height:1.2em}
+  .chess-board{
+    display:grid;grid-template-columns:repeat(8,1fr);
+    border:1px solid var(--fg-dim);width:100%;aspect-ratio:1;
+    box-shadow:0 0 24px -6px var(--fg-glow);border-radius:4px;overflow:hidden;
+    user-select:none;
+  }
+  .sq{display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;
+    font-size:clamp(16px,4.2vmin,30px);line-height:1;
+    transition:background .12s}
+  .sq.light{background:rgba(255,255,255,.075)}
+  .sq.dark{background:rgba(0,0,0,.42)}
+  .sq.sel{background:var(--sel);box-shadow:inset 0 0 0 2px var(--fg)}
+  .sq.mv::after{content:"";position:absolute;width:26%;height:26%;border-radius:50%;
+    background:var(--fg);opacity:.55;box-shadow:0 0 8px var(--fg-glow)}
+  .sq.cap{box-shadow:inset 0 0 0 2px var(--err)}
+  .sq .pc{filter:drop-shadow(0 0 5px var(--fg-glow))}
+  .sq .pc.w{color:var(--accent)}
+  .sq .pc.b{color:var(--fg-dim);filter:drop-shadow(0 0 3px rgba(0,0,0,.8))}
+  .chess-quit{margin-top:8px;font-family:var(--font);font-size:11px;color:var(--fg);
+    background:transparent;border:1px solid var(--fg-dim);border-radius:6px;padding:5px 10px;cursor:pointer}
+  .chess-quit:hover{background:var(--fg-faint)}
+  .chess-wrap.done .sq{cursor:default;opacity:.75}
+
+  /* ---------- matrix ---------- */
+  #matrix{position:fixed;inset:0;z-index:30;pointer-events:none;opacity:0;transition:opacity .5s}
+  #matrix.on{opacity:1}
+
+  /* ---------- resume overlay ---------- */
+  #resumeOverlay{
+    position:fixed;inset:0;z-index:60;display:none;overflow-y:auto;
+    background:rgba(0,0,0,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+    padding:24px 12px 60px;
+  }
+  #resumeOverlay.open{display:block;animation:fadein .25s ease}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+  #paper{
+    max-width:820px;margin:0 auto;background:#f7f6f1;color:#181a17;
+    font-family:Georgia,"Times New Roman",serif;
+    border-radius:6px;box-shadow:0 30px 80px rgba(0,0,0,.7);
+    padding:46px 52px;position:relative;
+  }
+  #paper .mono{font-family:var(--font)}
+  #paperTools{position:sticky;top:0;z-index:2;max-width:820px;margin:0 auto 10px;display:flex;gap:8px;justify-content:flex-end}
+  #paperTools button{
+    font-family:var(--font);font-size:12px;padding:8px 14px;border-radius:6px;cursor:pointer;
+    border:1px solid var(--fg);background:#000;color:var(--fg);font-weight:700;
+  }
+  #paperTools button:hover{background:var(--fg);color:#000}
+  #paper h1{font-size:27px;letter-spacing:.01em;margin-bottom:2px}
+  #paper .subtitle{font-size:14px;color:#3c4a3f;margin-bottom:6px;font-style:italic}
+  #paper .contactline{font-family:var(--font);font-size:11.5px;color:#333;margin-bottom:14px}
+  #paper .contactline a{color:#1a5c33;text-decoration:none}
+  #paper h2{font-family:var(--font);font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:#1a5c33;border-bottom:1.5px solid #1a5c33;padding-bottom:3px;margin:20px 0 9px}
+  #paper h3{font-size:14.5px;margin:11px 0 1px}
+  #paper .meta{font-size:12px;color:#555;font-style:italic;margin-bottom:3px}
+  #paper p,#paper li{font-size:13px;line-height:1.5}
+  #paper ul{margin:2px 0 4px 18px}
+  #paper li{margin-bottom:2.5px}
+  #paper .skillrow{font-size:13px;margin-bottom:3px}
+  #paper .skillrow b{font-family:var(--font);font-size:11.5px}
+  @media (max-width:640px){#paper{padding:28px 20px}}
+
+  @media print{
+    body{overflow:visible;background:#fff}
+    #bg,#app,#crt,#flicker,#recruiter,#toasts,#paperTools,#matrix{display:none !important}
+    #resumeOverlay{display:block !important;position:static;background:#fff;padding:0;overflow:visible}
+    #paper{box-shadow:none;border-radius:0;max-width:none;padding:0;background:#fff;color:#000}
+    #paper h2{color:#000;border-color:#000}
+    #paper .contactline a{color:#000}
+  }
+
+  /* ---------- boot ---------- */
+  .boot-line{white-space:pre-wrap;text-shadow:0 0 7px var(--fg-glow)}
+
+  /* reduced motion */
+  @media (prefers-reduced-motion:reduce){
+    #flicker{animation:none;opacity:.008}
+    #cursor{animation:none}
+    .toast{animation:none}
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+  <div id="bg"></div>
+  <div id="flicker"></div>
+
+  <a href="../" title="Return to the Universe" style="position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:14px;z-index:60;font-family:var(--font);font-size:12px;color:var(--fg);text-decoration:none;border:1px solid var(--fg-faint);background:rgba(2,10,4,.72);border-radius:8px;padding:7px 12px;letter-spacing:.04em;backdrop-filter:blur(4px);transition:box-shadow .2s,border-color .2s">↖ exit to the Universe</a>
+
+  <button id="recruiter" title="Skip the fun, get the resume">⚡ recruiter mode</button>
+
+  <div id="app">
+    <div id="term">
+      <div id="titlebar">
+        <div class="tdots">
+          <button class="tdot r" data-dot="close" aria-label="close"></button>
+          <button class="tdot y" data-dot="min" aria-label="minimize"></button>
+          <button class="tdot g" data-dot="max" aria-label="maximize"></button>
+        </div>
+        <div id="titletext">visitor@chineme-os: ~ — 80×24</div>
+        <button id="achChip" title="click for details">achievements 0/6</button>
+      </div>
+      <div id="screen" aria-live="polite"></div>
+      <div id="kbdwrap">
+        <div id="palette">
+          <button class="pal-btn" data-cmd="help">help</button>
+          <button class="pal-btn" data-cmd="about">about</button>
+          <button class="pal-btn" data-cmd="experience">experience</button>
+          <button class="pal-btn" data-cmd="projects">projects</button>
+          <button class="pal-btn" data-cmd="skills">skills</button>
+          <button class="pal-btn" data-cmd="resume">resume</button>
+          <button class="pal-btn" data-cmd="chess">♟ chess</button>
+          <button class="pal-btn" data-cmd="neofetch">neofetch</button>
+          <button class="pal-btn" data-cmd="theme">theme</button>
+          <button class="pal-btn" data-cmd="contact">contact</button>
+        </div>
+        <div id="kbdline">
+          <span class="prompt">$</span>
+          <input id="kbd" type="text" autocomplete="off" autocorrect="off" autocapitalize="none"
+                 spellcheck="false" enterkeyhint="go" aria-label="terminal command input">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="crt"></div>
+  <canvas id="matrix"></canvas>
+  <div id="toasts"></div>
+
+  <!-- printable resume -->
+  <div id="resumeOverlay" role="dialog" aria-label="Printable resume">
+    <div id="paperTools">
+      <button id="btnPrint">⎙ print / save PDF</button>
+      <button id="btnCloseResume">✕ back to terminal</button>
+    </div>
+    <div id="paper">
+      <h1>Chineme Derek Uba</h1>
+      <div class="subtitle">Software Engineer (AI/ML + Backend)</div>
+      <div class="contactline">
+        Ontario, California &nbsp;·&nbsp; (909) 642-5231 &nbsp;·&nbsp;
+        <a href="mailto:cduba@umich.edu">cduba@umich.edu</a> &nbsp;·&nbsp;
+        <a href="https://linkedin.com/in/chineme-uba/">linkedin.com/in/chineme-uba/</a>
+      </div>
+      <p>Software engineer with an M.S. in Artificial Intelligence (Univ. of Michigan, Apr 2026) and first-author IEEE research in distributed systems. Builds production AI applications — LLM agents, fine-tuning, multimodal pipelines — with Python, C++, REST APIs, and CI/CD.</p>
+
+      <h2>Experience</h2>
+      <h3>Graduate Software Engineer — University of Michigan, Dearborn</h3>
+      <div class="meta">Jan 2026 – May 2026</div>
+      <ul>
+        <li>Reduced short film production time by automating the full creative pipeline (script → screen) via a multi-agent LLM orchestration system decomposing scripts into structured scenes, dialogue, characters, camera directions.</li>
+        <li>Fully customizable character creation (voice, appearance, behavior) with TTS + voice cloning; consistent tone/style across scenes.</li>
+        <li>Camera control &amp; scene planning module: dynamic environments, object placement, user-defined shots (pan, zoom, tracking).</li>
+        <li>Modular architecture combining LLMs + generative image/video/audio + interactive editing interface; cut latency, increased scalability.</li>
+      </ul>
+      <h3>Graduate Software Engineer — University of Michigan, Dearborn</h3>
+      <div class="meta">Jun 2025 – Dec 2025</div>
+      <ul>
+        <li>+20% student learning outcomes (overall grade increases) by deploying a Llama 3.1 (3B) AI agent via Open-WebUI: personalized, adaptive tutoring.</li>
+        <li>Reduced disengagement with real-time attentional monitoring: GazeTracker + FaceTracker sensors trigger adaptive AI responses.</li>
+      </ul>
+      <h3>Graduate Software Engineer — University of Michigan, Dearborn</h3>
+      <div class="meta">Nov 2024 – Jun 2025</div>
+      <ul>
+        <li>−25% IoT network energy consumption (publisher lifetime extension) via custom MQTT protocol extending QoS to accuracy + sensing frequency.</li>
+        <li>Dynamic task scheduling optimally assigning publishers to subscribers on accuracy, latency, sensing frequency.</li>
+        <li>Optimization algorithm balancing energy savings with full QoS compliance — publisher lifetime +69%.</li>
+      </ul>
+      <h3>Engineer Intern — Los Alamos National Lab, Los Alamos</h3>
+      <div class="meta">Jun 2023 – Dec 2023</div>
+      <ul>
+        <li>−99.3% spectrograph image processing time: Python GUI system (Tkinter + Qt) automating data ingestion, processing, visualization.</li>
+        <li>+37% nuclear reactor network efficiency (fuel cell classification accuracy): multi-framework AI model (PyTorch, Scikit-learn, TensorFlow) classifying fuel cell quality from imaging.</li>
+        <li>Spent fuel assembly image production: 3 hours → under 1 minute by redesigning the end-to-end imaging pipeline.</li>
+      </ul>
+      <h3>Student Researcher — University of California-Davis</h3>
+      <div class="meta">Sep 2021 – Mar 2023</div>
+      <ul>
+        <li>SAMD educational website for 500+ annual users documenting scattering/attenuation measuring devices.</li>
+        <li>−15% laser measurement errors by calibrating laser systems and optimizing intensity parameters/thresholds.</li>
+        <li>−23% light interference errors via a custom light-mitigating apparatus isolating the measurement environment.</li>
+      </ul>
+      <h3>Software Engineer Intern — Thaddeus Resource Center, Irvine</h3>
+      <div class="meta">Jun 2022 – Sep 2022</div>
+      <ul>
+        <li>Responsive React login screen for a case management system serving domestic violence victims — 3,000+ annual users.</li>
+        <li>+20% onboarding efficiency: structured mentorship program coordinating task assignments/training for 15 interns.</li>
+      </ul>
+
+      <h2>Skills</h2>
+      <div class="skillrow"><b>Programming:</b> Python, JavaScript, C++, Rust, Go</div>
+      <div class="skillrow"><b>AI/LLM:</b> OpenAI API, Claude API, LangGraph, LangChain, MCP, RAG, Fine-Tuning, LLM Evaluation, Prompt Engineering</div>
+      <div class="skillrow"><b>Databases:</b> SQL Server, FAISS, ChromaDB</div>
+      <div class="skillrow"><b>Backend:</b> FastAPI, Flask, REST APIs</div>
+      <div class="skillrow"><b>Infrastructure:</b> Docker, Git, Linux, CI/CD</div>
+
+      <h2>Projects</h2>
+      <ul>
+        <li><b>Community Rider</b> — college ride-sharing marketplace; drivers post rides, riders submit price offers, real-time fare negotiation; listing/booking system with seat availability, routes, dynamic pricing; fully responsive.</li>
+        <li><b>AI Resume Tailor</b> — LLM tool parsing job descriptions → auto-generated tailored resumes; automated the full application pipeline (generation → submission → LinkedIn recruiter outreach) inside a dedicated VM; Excel dashboard tracking.</li>
+        <li><b>Chess Bot</b> — full C++ chess engine from scratch: all legal moves, game state, terminal interface, two-player &amp; human-vs-bot; Alpha-Beta pruning AI opponent.</li>
+        <li><b>Translate GPT</b> — Transformer neural net in PyTorch: encoder-decoder, multi-head self-attention, positional encoding; full data pipeline (tokenization, batching, masking); GPU-accelerated training on bilingual datasets.</li>
+        <li><b>Grandma AI</b> — Android agentic AI assistant with multilingual voice interaction &amp; conversational Igbo; wake-word → STT → LLM dialogue → TTS pipeline; persistent memory for long-term conversation continuity; deployed for real-world daily companionship.</li>
+      </ul>
+
+      <h2>Education</h2>
+      <h3>M.S. Artificial Intelligence (Machine Learning emphasis)</h3>
+      <div class="meta">University of Michigan, Dearborn · Sep 2024 – Apr 2026 · GPA 3.70/4.00</div>
+      <h3>B.S. Physics and Computer Science</h3>
+      <div class="meta">UC Davis · Sep 2018 – Dec 2022 · GPA 3.60/4.00</div>
+
+      <h2>Distinctions</h2>
+      <p>First Author, “Smart-MQTT: QoS-Aware and Energy-Efficient Task Allocation for MQTT-Based IoT Systems” — Accepted to IEEE IWCMC 2026</p>
+
+      <h2>Certifications</h2>
+      <p>Claude 101 · AI Fluency Framework &amp; Foundations · Machine Learning · Advanced Learning Algorithms · Supervised Machine Learning: Regression and Classification</p>
+    </div>
+  </div>
+
+<script type="module">
+/* ============================================================
+   CHINEME-OS — interactive terminal resume
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const screen = $('#screen'), kbd = $('#kbd');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isMobile = matchMedia('(max-width:760px)').matches;
+const t0 = Date.now();
+let commandsTyped = 0;
+let booted = false;
+
+/* ---------- safe storage ---------- */
+const store = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v==null?d:JSON.parse(v);}catch(e){return d} },
+  set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------- themes ---------- */
+const THEMES = [
+  {id:'green', label:'green phosphor', fg:'#3bff73', dim:'#1e9a48', faint:'rgba(59,255,115,.14)',
+   glow:'rgba(59,255,115,.55)', bg:'#020703', bgTerm:'rgba(2,10,4,.82)', accent:'#9dffbe',
+   sel:'rgba(59,255,115,.25)', three:0x3bff73, threeDim:0x145c2c},
+  {id:'amber', label:'amber vt220', fg:'#ffb000', dim:'#8f6300', faint:'rgba(255,176,0,.13)',
+   glow:'rgba(255,176,0,.5)', bg:'#0a0501', bgTerm:'rgba(12,7,1,.84)', accent:'#ffd97a',
+   sel:'rgba(255,176,0,.28)', three:0xffb000, threeDim:0x5c3f00},
+  {id:'cyber', label:'cyberpunk purple', fg:'#c77dff', dim:'#6b3a9e', faint:'rgba(199,125,255,.14)',
+   glow:'rgba(199,125,255,.55)', bg:'#070211', bgTerm:'rgba(10,3,22,.84)', accent:'#ff79c6',
+   sel:'rgba(199,125,255,.28)', three:0xc77dff, threeDim:0x4a2470},
+];
+let themeIdx = Math.max(0, THEMES.findIndex(t=>t.id===store.get('chineme_theme','green')));
+function applyTheme(i, announce){
+  themeIdx = ((i % THEMES.length)+THEMES.length)%THEMES.length;
+  const t = THEMES[themeIdx], r = document.documentElement.style;
+  r.setProperty('--fg',t.fg); r.setProperty('--fg-dim',t.dim);
+  r.setProperty('--fg-faint',t.faint); r.setProperty('--fg-glow',t.glow);
+  r.setProperty('--bg',t.bg); r.setProperty('--bg-term',t.bgTerm);
+  r.setProperty('--accent',t.accent); r.setProperty('--sel',t.sel);
+  store.set('chineme_theme',t.id);
+  if (bgApi) bgApi.setColor(t.three,t.threeDim);
+  if (announce) out([seg('theme set → ','dim'),seg(t.label,'hl'),seg('   ('+((themeIdx+1))+'/'+THEMES.length+' — run `theme` again to cycle)','dim')]);
+}
+
+/* ---------- achievements ---------- */
+const ACH = [
+  {id:'first_cmd', name:'Hello, Operator', desc:'typed your first command'},
+  {id:'neofetch',  name:'System Inspector', desc:'ran neofetch'},
+  {id:'sudo',      name:'Root Access', desc:'found sudo hire chineme', secret:true},
+  {id:'chess',     name:'Pawn Star', desc:'played the chess engine'},
+  {id:'matrix',    name:'Red Pill', desc:'entered the matrix', secret:true},
+  {id:'grandma',   name:'Best Grandchild', desc:'met Grandma AI', secret:true},
+];
+let unlocked = new Set(store.get('chineme_ach',[]));
+const sessionUnlocks = new Set();
+function updateChip(){ $('#achChip').textContent = `achievements ${unlocked.size}/${ACH.length}`; }
+function toast(title, body){
+  const t = document.createElement('div');
+  t.className='toast';
+  const h=document.createElement('div'); h.className='t-title'; h.textContent=title;
+  const b=document.createElement('div'); b.textContent=body;
+  t.append(h,b); $('#toasts').append(t);
+  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),450); }, 3600);
+}
+function unlock(id){
+  if (unlocked.has(id)) return;
+  const a = ACH.find(x=>x.id===id); if(!a) return;
+  unlocked.add(id); sessionUnlocks.add(id);
+  store.set('chineme_ach',[...unlocked]); updateChip();
+  toast('ACHIEVEMENT UNLOCKED', `${a.name} — ${a.desc}`);
+  if (unlocked.size===ACH.length){
+    setTimeout(()=>{ toast('100% COMPLETION','you found everything. seriously, hire this guy.');
+      out([]); out([seg('★ 100% COMPLETION — ','hl'),seg('all 6 achievements unlocked. ','ok'),seg('session so far: '+sessionWrapped(),'dim')]);
+    }, 900);
+  }
+}
+
+/* ---------- output engine (typewriter, HTML-safe) ---------- */
+const seg = (t,c,href)=>({t,c,href});
+let outQ=[], typingBusy=false, pendingChars=0, curLineAbort=null;
+
+function out(segsOrText, opts={}){
+  let segs = typeof segsOrText==='string' ? [seg(segsOrText, opts.cls||'')] : segsOrText;
+  outQ.push({segs, instant:!!opts.instant});
+  pendingChars += segs.reduce((n,s)=>n+s.t.length,0);
+  pump();
+}
+function outBlock(el){ outQ.push({block:el}); pump(); }
+function outAscii(text, cls){
+  const pre=document.createElement('div');
+  pre.className='ascii '+(cls||''); pre.textContent=text;
+  outBlock(pre);
+}
+function scrollBottom(){ screen.scrollTop = screen.scrollHeight; }
+
+async function pump(){
+  if (typingBusy) return;
+  typingBusy = true;
+  while (outQ.length){
+    const item = outQ.shift();
+    if (item.block){ insertBeforeInput(item.block); scrollBottom(); continue; }
+    const line=document.createElement('div'); line.className='line';
+    insertBeforeInput(line);
+    for (const s of item.segs){
+      let node;
+      if (s.href){ node=document.createElement('a'); node.href=s.href; node.target='_blank'; node.rel='noopener'; }
+      else node=document.createElement('span');
+      if (s.c) node.className=s.c;
+      line.append(node);
+      if (item.instant || reduceMotion){ node.textContent=s.t; pendingChars-=s.t.length; }
+      else{
+        let buf='';
+        const chunk = pendingChars>900?8 : pendingChars>350?4 : pendingChars>120?2 : 1;
+        for (let i=0;i<s.t.length;i+=chunk){
+          buf += s.t.slice(i,i+chunk); node.textContent=buf; pendingChars-=Math.min(chunk,s.t.length-i);
+          scrollBottom();
+          if (flushRequested) { node.textContent=s.t; pendingChars=Math.max(0,pendingChars); break; }
+          await sleep(chunk>1? 4+Math.random()*6 : 6+Math.random()*16);
+        }
+        node.textContent=s.t;
+      }
+    }
+    scrollBottom();
+  }
+  flushRequested=false;
+  typingBusy=false;
+  scrollBottom();
+}
+let flushRequested=false;
+function flushOutput(){ flushRequested=true; }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+/* keep desktop input row pinned at end of screen */
+const inputRow = document.createElement('div');
+inputRow.id='inputrow'; inputRow.className='line';
+inputRow.innerHTML='<span class="prompt">visitor@chineme-os:~$&nbsp;</span><span id="typed"></span><span id="cursor"></span>';
+function insertBeforeInput(el){
+  if (inputRow.parentNode===screen) screen.insertBefore(el, inputRow);
+  else screen.append(el);
+}
+const typedSpan = () => inputRow.querySelector('#typed');
+
+/* ---------- boot sequence ---------- */
+const BOOT = [
+  ['CHINEME-OS v5.0  ·  BIOS 2026.04  ·  (c) Uba Systems',''],
+  ['CPU: human, dual-degree (physics + cs) ........ OK','dim'],
+  ['MEM: 3.70 GPA @ 4.00 addressable .............. OK','dim'],
+  ['Loading kernel modules:','dim'],
+  ['  llm_agents.ko  chess_engine.ko  grandma_ai.ko  [✓]','ok'],
+  ['Mounting /dev/experience ....... 6 roles found','dim'],
+  ['Scanning publications .......... IEEE first author [✓]','ok'],
+  ['Starting display server ........ CRT phosphor mode','dim'],
+  ['Boot complete.','hl'],
+];
+let bootDone=false, bootSkip=false;
+async function boot(){
+  for (const [txt,cls] of BOOT){
+    if (bootSkip) break;
+    const d=document.createElement('div'); d.className='boot-line '+cls;
+    insertBeforeInput(d);
+    if (reduceMotion){ d.textContent=txt; }
+    else {
+      for (let i=0;i<=txt.length;i+=3){
+        d.textContent=txt.slice(0,i);
+        if (bootSkip){ break; }
+        await sleep(6);
+      }
+      d.textContent=txt;
+    }
+    scrollBottom();
+    if (!bootSkip) await sleep(60);
+  }
+  if (bootSkip){ // show all instantly
+    screen.querySelectorAll('.boot-line').forEach(e=>e.remove());
+    for (const [txt,cls] of BOOT){ const d=document.createElement('div'); d.className='boot-line '+cls; d.textContent=txt; insertBeforeInput(d); }
+  }
+  bootDone=true;
+  welcome();
+}
+function skipBoot(){ if(!bootDone) bootSkip=true; }
+addEventListener('keydown', skipBoot, {once:false});
+addEventListener('pointerdown', skipBoot);
+
+const BANNER =
+` ██████╗██╗  ██╗██╗███╗   ██╗███████╗███╗   ███╗███████╗       ██████╗ ███████╗
+██╔════╝██║  ██║██║████╗  ██║██╔════╝████╗ ████║██╔════╝      ██╔═══██╗██╔════╝
+██║     ███████║██║██╔██╗ ██║█████╗  ██╔████╔██║█████╗  █████╗██║   ██║███████╗
+██║     ██╔══██║██║██║╚██╗██║██╔══╝  ██║╚██╔╝██║██╔══╝  ╚════╝██║   ██║╚════██║
+╚██████╗██║  ██║██║██║ ╚████║███████╗██║ ╚═╝ ██║███████╗      ╚██████╔╝███████║
+ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝╚══════╝       ╚═════╝ ╚══════╝`;
+
+function welcome(){
+  outAscii(BANNER);
+  out([seg('Chineme Derek Uba','hl'), seg('  ·  Software Engineer (AI/ML + Backend)  ·  Ontario, CA','dim')],{instant:true});
+  out([seg('99.3% faster imaging @ Los Alamos  ·  +69% IoT publisher lifetime  ·  IEEE first author','dim')],{instant:true});
+  out([],{instant:true});
+  out([seg('Welcome, visitor. Type ','ok'),seg('help','hl'),seg(' to begin. Type ','ok'),seg('chess','hl'),seg(' if you’re brave. There are secrets.','ok')]);
+  out([],{instant:true});
+  screen.append(inputRow);
+  booted=true;
+  if (!isMobile) kbd.focus();
+  scrollBottom();
+}
+
+/* ---------- command handling ---------- */
+const history=[]; let histIdx=-1;
+const COMMANDS = ['help','about','experience','projects','skills','education','contact','resume',
+  'clear','whoami','neofetch','theme','chess','matrix','grandma','achievements','sudo hire chineme','exit','ls','quit'];
+
+function echoCommand(raw){
+  const d=document.createElement('div'); d.className='line';
+  const p=document.createElement('span'); p.className='prompt'; p.textContent='visitor@chineme-os:~$ ';
+  const c=document.createElement('span'); c.className='echo-cmd'; c.textContent=raw;
+  d.append(p,c); insertBeforeInput(d); scrollBottom();
+}
+
+function submit(raw){
+  raw = raw.trim();
+  flushOutput();
+  echoCommand(raw);
+  if (!raw){ return; }
+  history.push(raw); histIdx=history.length;
+  commandsTyped++;
+  unlock('first_cmd');
+  dispatch(raw);
+}
+
+function dispatch(raw){
+  const low = raw.toLowerCase();
+  const [cmd, ...args] = low.split(/\s+/);
+
+  if (chess.active && (cmd==='quit'||cmd==='q'||cmd==='exit'||cmd==='resign')){ chess.end('resigned'); return; }
+
+  switch(cmd){
+    case 'help': return cmdHelp();
+    case 'about': return cmdAbout();
+    case 'experience': case 'work': case 'exp': return cmdExperience();
+    case 'projects': case 'project': return cmdProjects();
+    case 'skills': case 'stack': return cmdSkills();
+    case 'education': case 'edu': return cmdEducation();
+    case 'contact': return cmdContact();
+    case 'resume': case 'cv': return openResume(true);
+    case 'clear': case 'cls': return cmdClear();
+    case 'whoami': return cmdWhoami();
+    case 'neofetch': return cmdNeofetch();
+    case 'theme': return cmdTheme(args[0]);
+    case 'chess': return chess.start();
+    case 'matrix': return runMatrix();
+    case 'grandma': return cmdGrandma();
+    case 'achievements': case 'ach': return cmdAchievements();
+    case 'exit': case 'logout': case 'quit': return cmdExit();
+    case 'sudo': return cmdSudo(low);
+    case 'hire': return cmdSudo('sudo hire chineme');
+    case 'ls': case 'dir': return cmdLs();
+    case 'cat': return cmdCat(args.join(' '));
+    case 'cd': return out([seg('cd: nice try. everything worth seeing is right here. (try ','dim'),seg('ls','hl'),seg(')','dim')]);
+    case 'pwd': return out('/home/visitor/chineme-os','dim');
+    case 'vim': case 'vi': case 'nano': case 'emacs': return out([seg('opening '+cmd+'... just kidding. nobody escapes '+ (cmd==='vim'||cmd==='vi'?'vim':'an editor war') +' twice in one day.','dim')]);
+    case 'rm': return out([seg('rm: permission denied. this resume is write-protected by ambition.','warn')]);
+    case 'echo': return out(raw.slice(5)||'' ,{cls:'ok'});
+    case 'date': return out(new Date().toString(),{cls:'dim'});
+    case 'hello': case 'hi': case 'hey': return out([seg('hello! I’m a terminal, not a chatbot — but Chineme builds those too. try ','ok'),seg('projects','hl')]);
+    case 'man': return out([seg('man: what year is it? try ','dim'),seg('help','hl')]);
+    case 'ping': return out('PONG — 0.42ms (reflexes honed by chess blitz)','ok');
+    case 'history': return history.forEach((h,i)=>out([seg(String(i+1).padStart(3)+'  ','dim'),seg(h,'ok')],{instant:true}));
+    default: return cmdUnknown(cmd);
+  }
+}
+
+const UNKNOWN_WIT = [
+  c=>[seg(`bash: ${c}: command not found. `,'err'),seg('it happens to the best of us. try ','dim'),seg('help','hl')],
+  c=>[seg(`'${c}'? `,'err'),seg('bold. wrong, but bold. type ','dim'),seg('help','hl'),seg(' for the menu.','dim')],
+  c=>[seg(`${c}: not found. `,'err'),seg('fun fact: Chineme automates job applications — but you still have to type real commands. ','dim'),seg('help','hl')],
+  c=>[seg(`segmentation fault (just kidding). `,'err'),seg(`'${c}' isn’t a thing here. `,'dim'),seg('help','hl'),seg(' is.','dim')],
+];
+function cmdUnknown(c){
+  // suggest closest command
+  const best = COMMANDS.map(k=>[k,lev(c,k.split(' ')[0])]).sort((a,b)=>a[1]-b[1])[0];
+  const w = UNKNOWN_WIT[Math.floor(Math.random()*UNKNOWN_WIT.length)](c);
+  out(w);
+  if (best && best[1]<=2 && best[1]>0) out([seg('   did you mean ','dim'),seg(best[0],'hl'),seg('?','dim')]);
+}
+function lev(a,b){
+  const m=[...Array(a.length+1)].map((_,i)=>[i,...Array(b.length).fill(0)]);
+  for(let j=0;j<=b.length;j++)m[0][j]=j;
+  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)
+    m[i][j]=Math.min(m[i-1][j]+1,m[i][j-1]+1,m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return m[a.length][b.length];
+}
+
+/* ---------- content commands ---------- */
+function rule(){ out('─'.repeat(46),{cls:'rule',instant:true}); }
+
+function cmdHelp(){
+  rule();
+  out([seg('  COMMANDS','hl')],{instant:true});
+  const rows = [
+    ['about','who is chineme?'],
+    ['experience','6 roles: Los Alamos → Michigan AI research'],
+    ['projects','chess engine, Grandma AI, transformers...'],
+    ['skills','languages, AI/LLM stack, infra'],
+    ['education','M.S. AI (Michigan) · B.S. Physics+CS (Davis)'],
+    ['contact','email, phone, linkedin'],
+    ['resume','clean printable resume (recruiters: this one)'],
+    ['chess','play the engine author. simplified rules.'],
+    ['neofetch','system info, but make it human'],
+    ['theme','cycle phosphor → amber → cyberpunk'],
+    ['whoami','who are YOU? the terminal knows.'],
+    ['clear','wipe the screen'],
+    ['exit','(good luck with that)'],
+  ];
+  for (const [c,d] of rows) out([seg('  '+c.padEnd(12),'hl'),seg(d,'dim')],{instant:true});
+  rule();
+  out([seg('  psst: ','dim'),seg('3 hidden commands','warn'),seg(' exist. Tab completes. ↑ recalls history.','dim')]);
+}
+
+function cmdAbout(){
+  rule();
+  out([seg('CHINEME DEREK UBA','hl'),seg('  ·  Software Engineer (AI/ML + Backend)','dim')]);
+  out([seg('Ontario, California','dim')],{instant:true});
+  out([],{instant:true});
+  out('Software engineer with an M.S. in Artificial Intelligence (Univ. of Michigan, Apr 2026) and first-author IEEE research in distributed systems. Builds production AI applications — LLM agents, fine-tuning, multimodal pipelines — with Python, C++, REST APIs, and CI/CD.');
+  out([],{instant:true});
+  out([seg('the arc: ','dim'),seg('Physics @ UC Davis → Los Alamos National Lab → M.S. AI @ Michigan → IEEE-published AI engineer','ok')]);
+  out([seg('the person: ','dim'),seg('builds AI for his grandma (in Igbo), wrote a chess engine in C++, automates everything — including his own job applications.','ok')]);
+  out([],{instant:true});
+  out([seg('next: ','dim'),seg('experience','hl'),seg('  ·  ','dim'),seg('projects','hl'),seg('  ·  ','dim'),seg('chess','hl')],{instant:true});
+}
+
+function job(title, org, dates, bullets){
+  out([],{instant:true});
+  out([seg('▸ '+title,'hl'),seg('  — '+org,'ok')],{instant:true});
+  out([seg('  '+dates,'dim')],{instant:true});
+  for (const b of bullets) out([seg('  · ','dim'),seg(b,'ok')],{instant:true});
+}
+function cmdExperience(){
+  rule();
+  out([seg('EXPERIENCE','hl'),seg('  (reverse chronological, like a good stack)','dim')],{instant:true});
+  job('Graduate Software Engineer','University of Michigan, Dearborn','Jan 2026 – May 2026',[
+    'Reduced short film production time by automating the full creative pipeline (script → screen) via a multi-agent LLM orchestration system decomposing scripts into structured scenes, dialogue, characters, camera directions.',
+    'Fully customizable character creation (voice, appearance, behavior) with TTS + voice cloning; consistent tone/style across scenes.',
+    'Camera control & scene planning module: dynamic environments, object placement, user-defined shots (pan, zoom, tracking).',
+    'Modular architecture combining LLMs + generative image/video/audio + interactive editing interface; cut latency, increased scalability.']);
+  job('Graduate Software Engineer','University of Michigan, Dearborn','Jun 2025 – Dec 2025',[
+    '+20% student learning outcomes (overall grade increases) by deploying a Llama 3.1 (3B) AI agent via Open-WebUI: personalized, adaptive tutoring.',
+    'Reduced disengagement with real-time attentional monitoring: GazeTracker + FaceTracker sensors trigger adaptive AI responses.']);
+  job('Graduate Software Engineer','University of Michigan, Dearborn','Nov 2024 – Jun 2025',[
+    '−25% IoT network energy consumption (publisher lifetime extension) via custom MQTT protocol extending QoS to accuracy + sensing frequency.',
+    'Dynamic task scheduling optimally assigning publishers to subscribers on accuracy, latency, sensing frequency.',
+    'Optimization algorithm balancing energy savings with full QoS compliance — publisher lifetime +69%.']);
+  job('Engineer Intern','Los Alamos National Lab, Los Alamos','Jun 2023 – Dec 2023',[
+    '−99.3% spectrograph image processing time: Python GUI system (Tkinter + Qt) automating data ingestion, processing, visualization.',
+    '+37% nuclear reactor network efficiency (fuel cell classification accuracy): multi-framework AI model (PyTorch, Scikit-learn, TensorFlow) classifying fuel cell quality from imaging.',
+    'Spent fuel assembly image production: 3 hours → under 1 minute by redesigning the end-to-end imaging pipeline.']);
+  job('Student Researcher','University of California-Davis','Sep 2021 – Mar 2023',[
+    'SAMD educational website for 500+ annual users documenting scattering/attenuation measuring devices.',
+    '−15% laser measurement errors by calibrating laser systems and optimizing intensity parameters/thresholds.',
+    '−23% light interference errors via a custom light-mitigating apparatus isolating the measurement environment.']);
+  job('Software Engineer Intern','Thaddeus Resource Center, Irvine','Jun 2022 – Sep 2022',[
+    'Responsive React login screen for a case management system serving domestic violence victims — 3,000+ annual users.',
+    '+20% onboarding efficiency: structured mentorship program coordinating task assignments/training for 15 interns.']);
+  out([],{instant:true});
+  out([seg('distinction: ','dim'),seg('First Author — “Smart-MQTT: QoS-Aware and Energy-Efficient Task Allocation for MQTT-Based IoT Systems” · Accepted to IEEE IWCMC 2026','warn')],{instant:true});
+}
+
+function cmdProjects(){
+  rule();
+  out([seg('PROJECTS','hl'),seg('  (~/src — things built for fun and family)','dim')],{instant:true});
+  const P=[
+    ['community-rider/','Community Rider','college ride-sharing marketplace; drivers post rides, riders submit price offers, real-time fare negotiation; listing/booking system with seat availability, routes, dynamic pricing; fully responsive.'],
+    ['resume-tailor/','AI Resume Tailor','LLM tool parsing job descriptions → auto-generated tailored resumes; automated the full application pipeline (generation → submission → LinkedIn recruiter outreach) inside a dedicated VM; Excel dashboard tracking.'],
+    ['chess-bot.cpp','Chess Bot','full C++ chess engine from scratch: all legal moves, game state, terminal interface, two-player & human-vs-bot; Alpha-Beta pruning AI opponent. (a diet version lives here — type `chess`)'],
+    ['translate-gpt/','Translate GPT','Transformer neural net in PyTorch: encoder-decoder, multi-head self-attention, positional encoding; full data pipeline (tokenization, batching, masking); GPU-accelerated training on bilingual datasets.'],
+    ['grandma-ai.apk','Grandma AI','Android agentic AI assistant with multilingual voice interaction & conversational Igbo; wake-word → STT → LLM dialogue → TTS pipeline; persistent memory for long-term conversation continuity; deployed for real-world daily companionship. (type `grandma` for the story)'],
+  ];
+  for (const [f,n,d] of P){
+    out([],{instant:true});
+    out([seg('▸ '+f.padEnd(18),'warn'),seg(n,'hl')],{instant:true});
+    out([seg('  '+d,'ok')],{instant:true});
+  }
+}
+
+function cmdSkills(){
+  rule();
+  out([seg('SKILLS','hl'),seg('  ($PATH of a multi-tool engineer)','dim')],{instant:true});
+  const S=[
+    ['Programming','Python · JavaScript · C++ · Rust · Go'],
+    ['AI / LLM','OpenAI API · Claude API · LangGraph · LangChain · MCP · RAG · Fine-Tuning · LLM Evaluation · Prompt Engineering'],
+    ['Databases','SQL Server · FAISS · ChromaDB'],
+    ['Backend','FastAPI · Flask · REST APIs'],
+    ['Infrastructure','Docker · Git · Linux · CI/CD'],
+  ];
+  for (const [k,v] of S){
+    out([seg('  '+k.padEnd(16),'warn'),seg(v,'ok')],{instant:true});
+  }
+  out([],{instant:true});
+  out([seg('  certs: ','dim'),seg('Claude 101 · AI Fluency Framework & Foundations · Machine Learning · Advanced Learning Algorithms · Supervised Machine Learning: Regression and Classification','dim')],{instant:true});
+}
+
+function cmdEducation(){
+  rule();
+  out([seg('EDUCATION','hl')],{instant:true});
+  out([],{instant:true});
+  out([seg('▸ M.S. Artificial Intelligence','hl'),seg(' (Machine Learning emphasis)','ok')],{instant:true});
+  out([seg('  University of Michigan, Dearborn · Sep 2024 – Apr 2026 · GPA 3.70/4.00','dim')],{instant:true});
+  out([],{instant:true});
+  out([seg('▸ B.S. Physics and Computer Science','hl')],{instant:true});
+  out([seg('  UC Davis · Sep 2018 – Dec 2022 · GPA 3.60/4.00','dim')],{instant:true});
+  out([],{instant:true});
+  out([seg('  yes, physics AND computer science. the universe is just a badly documented API.','dim')]);
+}
+
+function cmdContact(){
+  rule();
+  out([seg('CONTACT','hl'),seg('  — actually responds, unlike most APIs','dim')],{instant:true});
+  out([seg('  email     ','warn'),seg('cduba@umich.edu','hl','mailto:cduba@umich.edu')],{instant:true});
+  out([seg('  phone     ','warn'),seg('(909) 642-5231','ok')],{instant:true});
+  out([seg('  linkedin  ','warn'),seg('linkedin.com/in/chineme-uba/','hl','https://linkedin.com/in/chineme-uba/')],{instant:true});
+  out([seg('  location  ','warn'),seg('Ontario, California','ok')],{instant:true});
+  out([],{instant:true});
+  out([seg('  or the fast lane: ','dim'),seg('sudo hire chineme','hl')]);
+}
+
+function cmdClear(){
+  [...screen.children].forEach(c=>{ if(c!==inputRow) c.remove(); });
+  chess.active=false;
+  out([seg('screen cleared. the achievements remain. ','dim'),seg('help','hl'),seg(' if lost.','dim')],{instant:true});
+}
+
+function cmdWhoami(){
+  const ua=navigator.userAgent;
+  const browser = /Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Firefox\//.test(ua)?'Firefox'
+    :/Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'a mystery browser';
+  const os = /Windows/.test(ua)?'Windows':/Mac/.test(ua)?'macOS':/Android/.test(ua)?'Android'
+    :/iPhone|iPad/.test(ua)?'iOS':/Linux/.test(ua)?'Linux':'an unknown OS';
+  const h=new Date().getHours();
+  const greet = h<5?'a night owl':h<12?'a morning person':h<18?'an afternoon browser':'an evening explorer';
+  const secs=Math.round((Date.now()-t0)/1000);
+  rule();
+  out([seg('you','hl'),seg(' — the visitor. let me check my logs...','dim')]);
+  out([seg('  device    ','warn'),seg(`${browser} on ${os}`,'ok')],{instant:true});
+  out([seg('  local     ','warn'),seg(new Date().toLocaleTimeString()+' — '+greet,'ok')],{instant:true});
+  out([seg('  session   ','warn'),seg(`${secs}s on site · ${commandsTyped} command${commandsTyped===1?'':'s'} typed · ${unlocked.size}/6 achievements`,'ok')],{instant:true});
+  out([],{instant:true});
+  out([seg('  verdict: someone curious enough to type ','dim'),seg('whoami','hl'),seg(' into a stranger’s resume. Chineme likes you already.','dim')]);
+}
+
+const NEO_ART =
+`   ██████╗██╗   ██╗
+  ██╔════╝██║   ██║
+  ██║     ██║   ██║
+  ██║     ██║   ██║
+  ╚██████╗╚██████╔╝
+   ╚═════╝ ╚═════╝ `;
+function cmdNeofetch(){
+  unlock('neofetch');
+  const up = ((Date.now()-new Date('2018-09-01').getTime())/(365.25*24*3600e3)).toFixed(1);
+  outAscii(NEO_ART);
+  const rows=[
+    ['chineme','@ CHINEME-OS'],
+    ['─────────────────',''],
+    ['OS','CHINEME-OS 5.0 LTS (human-compatible)'],
+    ['Host','Ontario, California'],
+    ['Kernel','M.S.-AI-2026 (Univ. of Michigan, GPA 3.70)'],
+    ['Uptime',`${up} years since first physics lecture (Sep 2018)`],
+    ['Shell','python · c++ · rust · go · javascript'],
+    ['DE','FastAPI / Flask on Docker + CI/CD'],
+    ['GPU','trains transformers; also renders chess boards'],
+    ['Packages','LangGraph · LangChain · MCP · RAG · FAISS · ChromaDB'],
+    ['Benchmarks','−99.3% img processing · +69% IoT lifetime · +20% learning outcomes'],
+    ['Flagship','IEEE IWCMC 2026 — first author (Smart-MQTT)'],
+    ['Contact','cduba@umich.edu'],
+  ];
+  for (const [k,v] of rows){
+    if(!v){ out([seg(k,'rule')],{instant:true}); continue; }
+    out([seg('  '+k.padEnd(12),'warn'),seg(v,'ok')],{instant:true});
+  }
+  // terminal color swatch
+  out([seg('  ██','ok'),seg('██','hl'),seg('██','warn'),seg('██','err'),seg('██','dim')],{instant:true});
+}
+
+function cmdTheme(arg){
+  if (arg){
+    const i=THEMES.findIndex(t=>t.id===arg||t.label.includes(arg));
+    if (i>=0) return applyTheme(i,true);
+    out([seg('unknown theme. options: green · amber · cyber','dim')]);
+    return;
+  }
+  applyTheme(themeIdx+1,true);
+}
+
+const HEART =
+`   ████████     ████████
+ ████████████ ████████████
+████████████████████████████
+████████████████████████████
+ ██████████████████████████
+   ██████████████████████
+     ██████████████████
+       ██████████████
+         ██████████
+           ██████
+             ██`;
+function cmdGrandma(){
+  unlock('grandma');
+  outAscii(HEART,'err');
+  rule();
+  out([seg('GRANDMA AI','hl'),seg('  — the most important deployment','dim')]);
+  out([],{instant:true});
+  out('Most engineers benchmark on MMLU. Chineme benchmarks on his grandmother.');
+  out([],{instant:true});
+  out([seg('  · ','dim'),seg('Android agentic AI assistant with multilingual voice interaction & conversational Igbo','ok')],{instant:true});
+  out([seg('  · ','dim'),seg('wake-word → STT → LLM dialogue → TTS pipeline','ok')],{instant:true});
+  out([seg('  · ','dim'),seg('persistent memory for long-term conversation continuity','ok')],{instant:true});
+  out([seg('  · ','dim'),seg('deployed for real-world daily companionship','ok')],{instant:true});
+  out([],{instant:true});
+  out([seg('The hardest users to design for aren’t enterprise clients — they’re grandmothers who deserve technology that speaks their language. Literally.','dim')]);
+}
+
+function cmdAchievements(){
+  rule();
+  out([seg(`ACHIEVEMENTS  ${unlocked.size}/${ACH.length}`,'hl')],{instant:true});
+  for (const a of ACH){
+    const got=unlocked.has(a.id);
+    out([
+      seg(got?'  [★] ':'  [ ] ', got?'warn':'dim'),
+      seg(got? a.name.padEnd(18) : (a.secret?'???'.padEnd(18):a.name.padEnd(18)), got?'hl':'dim'),
+      seg(got? a.desc : (a.secret?'(secret — keep exploring)':a.desc), 'dim')
+    ],{instant:true});
+  }
+  if (unlocked.size<ACH.length) out([seg('  hint: real engineers read the source. or just try things.','dim')]);
+}
+
+function sessionWrapped(){
+  const secs=Math.round((Date.now()-t0)/1000);
+  const mins=Math.floor(secs/60), rem=secs%60;
+  const secrets=['sudo','matrix','grandma'].filter(s=>unlocked.has(s)).length;
+  return `${mins}m ${rem}s on site · ${commandsTyped} commands · ${secrets}/3 secrets · ${unlocked.size}/6 achievements`;
+}
+function cmdExit(){
+  rule();
+  out([seg('◤ SESSION WRAPPED ◢','hl')],{instant:true});
+  out([seg('  '+sessionWrapped(),'ok')]);
+  out([],{instant:true});
+  out([seg('exit: ','err'),seg('request denied. CHINEME-OS has no exit — only ','ok'),seg('opportunities','hl'),seg('.','ok')]);
+  out([seg('you could close the tab. or you could type ','dim'),seg('sudo hire chineme','hl'),seg(' and make this weird little OS very happy.','dim')]);
+}
+
+function cmdSudo(low){
+  if (low.includes('hire')){
+    unlock('sudo');
+    out([seg('[sudo] password for visitor: ','dim'),seg('********','ok')],{instant:true});
+    out([seg('authenticating... ','dim'),seg('✓','hl')]);
+    out([seg('elevating privileges... ','dim'),seg('✓','hl')]);
+    out([seg('executing /usr/bin/hire --candidate="Chineme Derek Uba" --role="Software Engineer (AI/ML)"...','dim')]);
+    out([],{instant:true});
+    out([seg('  ██ HIRE REQUEST ACCEPTED ██','warn')],{instant:true});
+    out([],{instant:true});
+    out([seg('  excellent judgment, root. next steps:','ok')]);
+    out([seg('  → ','dim'),seg('cduba@umich.edu','hl','mailto:cduba@umich.edu'),seg('   (offer letters render best in this inbox)','dim')],{instant:true});
+    out([seg('  → ','dim'),seg('resume','hl'),seg(' for the printable version · ','dim'),seg('contact','hl'),seg(' for everything else','dim')],{instant:true});
+    return;
+  }
+  out([seg('visitor is not in the sudoers file. this incident will be reported.','err')]);
+  out([seg('(reported to no one. but there IS one sudo command that works here...)','dim')]);
+}
+
+function cmdLs(){
+  const files=[
+    ['about.txt','dim'],['experience.log','dim'],['projects/','warn'],['skills.json','dim'],
+    ['education.db','dim'],['resume.pdf','hl'],['chess-bot.cpp','warn'],['grandma-ai.apk','err'],
+    ['.secrets','dim'],
+  ];
+  out(files.map(f=>seg(f[0].padEnd(18),f[1])),{instant:true});
+  out([seg('try ','dim'),seg('cat resume.pdf','hl'),seg(' — or just type the command names without extensions.','dim')]);
+}
+function cmdCat(f){
+  if (/resume/.test(f)) return openResume(true);
+  if (/secret/.test(f)) return out([seg('.secrets: 3 entries. one needs privileges. one is green and falls. one loves you back.','warn')]);
+  if (/chess/.test(f)) return out([seg('12,000 lines of C++ omitted. play it instead: ','dim'),seg('chess','hl')]);
+  if (/grandma/.test(f)) return cmdGrandma();
+  if (!f) return out('cat: missing operand. feed me a filename.',{cls:'dim'});
+  out([seg(`cat: ${f}: no such file. `,'err'),seg('ls','hl'),seg(' shows what exists.','dim')]);
+}
+
+/* ---------- resume overlay ---------- */
+function openResume(announce){
+  $('#resumeOverlay').classList.add('open');
+  if (announce) out([seg('opening resume.pdf → rendered overlay. print button top-right saves a clean PDF.','dim')],{instant:true});
+}
+$('#btnCloseResume').addEventListener('click',()=>{ $('#resumeOverlay').classList.remove('open'); if(!isMobile)kbd.focus(); });
+$('#btnPrint').addEventListener('click',()=>window.print());
+$('#recruiter').addEventListener('click',()=>openResume(false));
+$('#resumeOverlay').addEventListener('click',e=>{ if(e.target.id==='resumeOverlay') { $('#resumeOverlay').classList.remove('open'); if(!isMobile)kbd.focus(); }});
+addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#resumeOverlay').classList.contains('open')) $('#resumeOverlay').classList.remove('open'); });
+
+/* ---------- matrix easter egg ---------- */
+let matrixRunning=false;
+function runMatrix(){
+  if (matrixRunning) return;
+  unlock('matrix');
+  matrixRunning=true;
+  out([seg('wake up, visitor... entering the matrix for 8 seconds (any key to exit early)','dim')],{instant:true});
+  const cv=$('#matrix'); cv.classList.add('on');
+  const ctx=cv.getContext('2d');
+  cv.width=innerWidth; cv.height=innerHeight;
+  const fs=16, cols=Math.floor(cv.width/fs);
+  const drops=Array(cols).fill(0).map(()=>Math.random()*-40);
+  const glyphs='アイウエオカキクケコサシスセソタチツテト0123456789CHINEME';
+  const color=getComputedStyle(document.documentElement).getPropertyValue('--fg').trim();
+  let raf, stop=false;
+  function draw(){
+    ctx.fillStyle='rgba(0,0,0,.08)'; ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.font=fs+'px monospace';
+    for(let i=0;i<cols;i++){
+      const ch=glyphs[Math.floor(Math.random()*glyphs.length)];
+      ctx.fillStyle=Math.random()>.975?'#fff':color;
+      ctx.fillText(ch,i*fs,drops[i]*fs);
+      if(drops[i]*fs>cv.height&&Math.random()>.975)drops[i]=0;
+      drops[i]+=1;
+    }
+    if(!stop) raf=requestAnimationFrame(draw);
+  }
+  function end(){
+    stop=true; cancelAnimationFrame(raf);
+    cv.classList.remove('on');
+    setTimeout(()=>{ctx.clearRect(0,0,cv.width,cv.height); matrixRunning=false;},550);
+    removeEventListener('keydown',end);
+    out([seg('...and you’re back. the matrix has you, but so does this resume.','dim')],{instant:true});
+  }
+  if (reduceMotion){ // one still frame, brief
+    draw(); stop=true;
+    setTimeout(end, 1500);
+  } else {
+    draw();
+    setTimeout(end, 8000);
+    setTimeout(()=>addEventListener('keydown',end,{once:true}),300);
+  }
+}
+
+/* ---------- chess ---------- */
+const chess = {
+  active:false, board:null, sel:null, turn:'w', wrap:null, statusEl:null, boardEl:null, moved:false, over:false,
+  glyph:{wK:'♔',wQ:'♕',wR:'♖',wB:'♗',wN:'♘',wP:'♙',bK:'♚',bQ:'♛',bR:'♜',bB:'♝',bN:'♞',bP:'♟'},
+  val:{P:1,N:3,B:3,R:5,Q:9,K:1000},
+
+  start(){
+    if (this.active){ out([seg('a game is already on the board. scroll down — or type ','dim'),seg('quit','hl'),seg(' to resign.','dim')],{instant:true}); return; }
+    this.board=[
+      ['bR','bN','bB','bQ','bK','bB','bN','bR'],
+      ['bP','bP','bP','bP','bP','bP','bP','bP'],
+      [0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],
+      ['wP','wP','wP','wP','wP','wP','wP','wP'],
+      ['wR','wN','wB','wQ','wK','wB','wN','wR'],
+    ];
+    this.sel=null; this.turn='w'; this.active=true; this.moved=false; this.over=false;
+
+    out([seg('booting chess-bot.cpp (terminal port)...','dim')],{instant:true});
+    const wrap=document.createElement('div'); wrap.className='chess-wrap';
+    wrap.innerHTML=`<div class="chess-head">CHESS-BOT v0.9 — the diet build. legal piece moves + captures only; no castling, en passant, or check (the full C++ engine has all that plus Alpha-Beta pruning — this one just wants your pieces). you are <b>white</b>. capture the king to win.</div>
+      <div class="chess-board"></div><div class="chess-status"></div>
+      <button class="chess-quit">✕ resign & return to terminal</button>`;
+    wrap.addEventListener('mousedown',e=>e.preventDefault()); // keep terminal keyboard focus
+    this.wrap=wrap; this.boardEl=wrap.querySelector('.chess-board'); this.statusEl=wrap.querySelector('.chess-status');
+    wrap.querySelector('.chess-quit').addEventListener('click',()=>this.end('resigned'));
+    outBlock(wrap);
+    this.status('your move, white. click a piece.');
+    this.render();
+  },
+
+  status(t){ if(this.statusEl) this.statusEl.textContent=t; },
+
+  moves(bd,r,c){
+    const p=bd[r][c]; if(!p) return [];
+    const col=p[0], k=p[1], res=[];
+    const on=(rr,cc)=>rr>=0&&rr<8&&cc>=0&&cc<8;
+    const push=(rr,cc)=>{ if(!on(rr,cc))return false;
+      const t=bd[rr][cc];
+      if(!t){res.push([rr,cc]);return true}
+      if(t[0]!==col)res.push([rr,cc]);
+      return false; };
+    if(k==='P'){
+      const dir=col==='w'?-1:1, start=col==='w'?6:1;
+      if(on(r+dir,c)&&!bd[r+dir][c]){ res.push([r+dir,c]);
+        if(r===start&&!bd[r+2*dir][c])res.push([r+2*dir,c]); }
+      for(const dc of[-1,1]){ const rr=r+dir,cc=c+dc;
+        if(on(rr,cc)&&bd[rr][cc]&&bd[rr][cc][0]!==col)res.push([rr,cc]); }
+    } else if(k==='N'){
+      for(const[dr,dc]of[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]){
+        const rr=r+dr,cc=c+dc;
+        if(on(rr,cc)&&(!bd[rr][cc]||bd[rr][cc][0]!==col))res.push([rr,cc]); }
+    } else if(k==='K'){
+      for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+        if(!dr&&!dc)continue; const rr=r+dr,cc=c+dc;
+        if(on(rr,cc)&&(!bd[rr][cc]||bd[rr][cc][0]!==col))res.push([rr,cc]); }
+    } else {
+      const dirs = k==='R'?[[1,0],[-1,0],[0,1],[0,-1]]
+        : k==='B'?[[1,1],[1,-1],[-1,1],[-1,-1]]
+        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      for(const[dr,dc]of dirs){ let rr=r+dr,cc=c+dc;
+        while(on(rr,cc)&&push(rr,cc)){rr+=dr;cc+=dc;} }
+    }
+    return res;
+  },
+
+  render(){
+    this.boardEl.innerHTML='';
+    const selMoves=this.sel?this.moves(this.board,this.sel[0],this.sel[1]):[];
+    for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+      const sq=document.createElement('div');
+      sq.className='sq '+(((r+c)%2)?'dark':'light');
+      const p=this.board[r][c];
+      if(p){ const s=document.createElement('span'); s.className='pc '+p[0]; s.textContent=this.glyph[p]; sq.append(s); }
+      if(this.sel&&this.sel[0]===r&&this.sel[1]===c)sq.classList.add('sel');
+      if(selMoves.some(m=>m[0]===r&&m[1]===c))sq.classList.add(p?'cap':'mv');
+      sq.addEventListener('click',()=>this.click(r,c));
+      this.boardEl.append(sq);
+    }
+  },
+
+  click(r,c){
+    if(!this.active||this.over||this.turn!=='w')return;
+    const p=this.board[r][c];
+    if(this.sel){
+      const legal=this.moves(this.board,this.sel[0],this.sel[1]).some(m=>m[0]===r&&m[1]===c);
+      if(legal){ this.make(this.sel,[r,c]); return; }
+    }
+    if(p&&p[0]==='w'){ this.sel=[r,c]; this.render(); }
+    else { this.sel=null; this.render(); }
+  },
+
+  make(from,to){
+    const bd=this.board;
+    const mover=bd[from[0]][from[1]], target=bd[to[0]][to[1]];
+    bd[to[0]][to[1]]=mover; bd[from[0]][from[1]]=0;
+    if(mover[1]==='P'&&(to[0]===0||to[0]===7))bd[to[0]][to[1]]=mover[0]+'Q';
+    this.sel=null;
+    if(!this.moved&&mover[0]==='w'){ this.moved=true; unlock('chess'); }
+    if(target&&target[1]==='K'){ this.finish(mover[0]); return; }
+    this.turn=this.turn==='w'?'b':'w';
+    this.render();
+    if(this.turn==='b'){
+      this.status(target?`you took ${this.glyph[target]} — bot is thinking (about revenge)...`:'bot is thinking...');
+      setTimeout(()=>this.aiMove(),420+Math.random()*380);
+    }
+  },
+
+  aiMove(){
+    if(!this.active||this.over)return;
+    const bd=this.board; const all=[];
+    for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+      const p=bd[r][c];
+      if(p&&p[0]==='b') for(const m of this.moves(bd,r,c))
+        all.push({from:[r,c],to:m,gain:bd[m[0]][m[1]]?this.val[bd[m[0]][m[1]][1]]:0});
+    }
+    if(!all.length){ this.finish('w','stalemate'); return; }
+    const best=Math.max(...all.map(m=>m.gain));
+    const cand=all.filter(m=>m.gain===best);
+    const mv=cand[Math.floor(Math.random()*cand.length)];
+    const taken=bd[mv.to[0]][mv.to[1]];
+    const mover=bd[mv.from[0]][mv.from[1]];
+    bd[mv.to[0]][mv.to[1]]=mover; bd[mv.from[0]][mv.from[1]]=0;
+    if(mover[1]==='P'&&mv.to[0]===7)bd[mv.to[0]][mv.to[1]]='bQ';
+    if(taken&&taken[1]==='K'){ this.finish('b'); return; }
+    this.turn='w'; this.render();
+    this.status(taken?`bot captured your ${this.glyph[taken]}. it says "gg" preemptively. your move.`:'your move.');
+  },
+
+  finish(winner,how){
+    this.over=true; this.render(); this.wrap.classList.add('done');
+    if(how==='stalemate'){ this.status('bot has no moves. you win by bureaucracy.'); }
+    else if(winner==='w'){ this.status('♔ KING CAPTURED — YOU WIN. the diet engine bows. the C++ one wants a rematch.'); }
+    else { this.status('♚ your king has been captured. the 1-ply greedy bot sends its regards.'); }
+    this.active=false;
+    out([seg(winner==='w'?'chess: you beat a chess engine author’s bot. flex responsibly. ':'chess: defeated by 1-ply greed. imagine Alpha-Beta at depth 8. ','ok'),seg('type ','dim'),seg('chess','hl'),seg(' for a rematch.','dim')],{instant:true});
+  },
+
+  end(){
+    if(!this.active)return;
+    this.over=true; this.active=false; this.wrap.classList.add('done');
+    this.status('resigned. an honorable retreat.');
+    out([seg('chess: resignation accepted. the engine pretends to be gracious about it.','dim')],{instant:true});
+  }
+};
+
+/* ---------- input wiring ---------- */
+kbd.addEventListener('input',()=>{ const t=typedSpan(); if(t)t.textContent=kbd.value; });
+kbd.addEventListener('keydown',e=>{
+  if(!booted)return;
+  if(e.key==='Enter'){
+    e.preventDefault();
+    const v=kbd.value; kbd.value=''; const t=typedSpan(); if(t)t.textContent='';
+    submit(v);
+  } else if(e.key==='ArrowUp'){
+    e.preventDefault();
+    if(history.length){ histIdx=Math.max(0,histIdx-1); kbd.value=history[histIdx]||''; const t=typedSpan(); if(t)t.textContent=kbd.value; }
+  } else if(e.key==='ArrowDown'){
+    e.preventDefault();
+    if(history.length){ histIdx=Math.min(history.length,histIdx+1); kbd.value=history[histIdx]||''; const t=typedSpan(); if(t)t.textContent=kbd.value; }
+  } else if(e.key==='Tab'){
+    e.preventDefault();
+    const cur=kbd.value.trim().toLowerCase();
+    if(!cur)return;
+    const matches=COMMANDS.filter(c=>c.startsWith(cur));
+    if(matches.length===1){ kbd.value=matches[0]; }
+    else if(matches.length>1){
+      // complete common prefix
+      let pre=matches[0];
+      for(const m of matches) while(!m.startsWith(pre)) pre=pre.slice(0,-1);
+      if(pre.length>cur.length) kbd.value=pre;
+      else out(matches.map(m=>seg(m+'  ','dim')),{instant:true});
+    }
+    const t=typedSpan(); if(t)t.textContent=kbd.value;
+  } else if(e.key==='l'&&e.ctrlKey){ e.preventDefault(); cmdClear(); }
+});
+screen.addEventListener('pointerup',e=>{
+  if(e.target.closest('a,.chess-wrap,button'))return;
+  const sel=getSelection();
+  if(sel&&sel.toString().length)return;
+  kbd.focus({preventScroll:true});
+});
+document.querySelectorAll('.pal-btn').forEach(b=>{
+  b.addEventListener('click',()=>{ if(!booted)return; submit(b.dataset.cmd); });
+});
+$('#achChip').addEventListener('click',()=>{ if(!booted)return; submit('achievements'); });
+
+/* title bar dots */
+const DOT_WIT={
+  close:[seg('close: ','err'),seg('this window is load-bearing. the whole resume would fall down.','dim')],
+  min:[seg('minimize: ','warn'),seg('you can’t minimize ambition. (or this div, apparently.)','dim')],
+  max:[seg('maximize: ','ok'),seg('already maximized. much like the GPA (3.70) given the circumstances (transformers).','dim')],
+};
+document.querySelectorAll('.tdot').forEach(d=>{
+  d.addEventListener('mousedown',e=>e.preventDefault());
+  d.addEventListener('click',()=>{ if(!booted)return; out(DOT_WIT[d.dataset.dot],{instant:true}); scrollBottom(); });
+});
+$('#achChip').addEventListener('mousedown',e=>e.preventDefault());
+
+/* visualViewport safety (mobile keyboards) */
+if (window.visualViewport){
+  visualViewport.addEventListener('resize',()=>{
+    document.getElementById('app').style.height=visualViewport.height+'px';
+    scrollBottom();
+  });
+}
+
+/* ---------- dev easter eggs ---------- */
+console.log('%c CHINEME-OS %c you opened the dev tools. of course you did. ',
+  'background:#3bff73;color:#020703;font-weight:bold;padding:4px 8px;border-radius:4px 0 0 4px;font-family:monospace',
+  'background:#0a2012;color:#3bff73;padding:4px 8px;border-radius:0 4px 4px 0;font-family:monospace');
+console.log('%c→ window.hire() is a real function. yes, really.','color:#3bff73;font-family:monospace');
+window.hire = function(){
+  console.log('%c HANDSHAKE INITIATED \n\n Chineme Derek Uba — Software Engineer (AI/ML + Backend)\n cduba@umich.edu · (909) 642-5231 · linkedin.com/in/chineme-uba/\n\n M.S. AI (Michigan, Apr 2026) · IEEE first author · builds AI for his grandma','color:#3bff73;font-family:monospace;font-size:13px');
+  try{ out([seg('⚡ window.hire() called from the console. a developer! ','hl'),seg('the offer letter template is: cduba@umich.edu','ok')],{instant:true}); }catch(e){}
+  return 'cduba@umich.edu — tell him the console sent you.';
+};
+
+/* ---------- three.js background ---------- */
+let bgApi=null;
+(async ()=>{
+  try{
+    const THREE = await import('three');
+    const holder=$('#bg');
+    const renderer=new THREE.WebGLRenderer({alpha:true,antialias:false,powerPreference:'low-power'});
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1, isMobile?1.5:2));
+    renderer.setSize(innerWidth,innerHeight);
+    holder.append(renderer.domElement);
+    const scene=new THREE.Scene();
+    scene.fog=new THREE.Fog(0x000000,10,80);
+    const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,200);
+    camera.position.set(0,3.2,14);
+
+    const gridMat=new THREE.MeshBasicMaterial({wireframe:true,transparent:true,opacity:.28});
+    const grid=new THREE.Mesh(new THREE.PlaneGeometry(160,160,46,46),gridMat);
+    grid.rotation.x=-Math.PI/2; grid.position.y=-5;
+    scene.add(grid);
+
+    const grid2=new THREE.Mesh(new THREE.PlaneGeometry(160,160,46,46),
+      new THREE.MeshBasicMaterial({wireframe:true,transparent:true,opacity:.1}));
+    grid2.rotation.x=Math.PI/2; grid2.position.y=14; scene.add(grid2);
+
+    const N=isMobile?220:480;
+    const pos=new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      pos[i*3]=(Math.random()-.5)*90;
+      pos[i*3+1]=Math.random()*26-6;
+      pos[i*3+2]=(Math.random()-.5)*90;
+    }
+    const pGeo=new THREE.BufferGeometry();
+    pGeo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    const pMat=new THREE.PointsMaterial({size:.22,transparent:true,opacity:.85,
+      blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true});
+    const points=new THREE.Points(pGeo,pMat);
+    scene.add(points);
+
+    let mx=0,my=0,tx=0,ty=0;
+    addEventListener('pointermove',e=>{
+      tx=(e.clientX/innerWidth-.5)*2; ty=(e.clientY/innerHeight-.5)*2;
+    },{passive:true});
+
+    let running=!document.hidden, rafId=0;
+    const clock=new THREE.Clock();
+    function frame(){
+      if(!running)return;
+      rafId=requestAnimationFrame(frame);
+      const t=clock.getElapsedTime();
+      mx+=(tx-mx)*.03; my+=(ty-my)*.03;
+      camera.position.x=mx*1.6;
+      camera.position.y=3.2-my*1.1;
+      camera.lookAt(0,1.5,0);
+      grid.rotation.z=t*.015;
+      grid2.rotation.z=-t*.01;
+      grid.position.y=-5+Math.sin(t*.35)*.25;
+      points.rotation.y=t*.02;
+      renderer.render(scene,camera);
+    }
+    function renderOnce(){ renderer.render(scene,camera); }
+
+    bgApi={ setColor(main,dim){
+      gridMat.color.setHex(dim); grid2.material.color.setHex(dim);
+      pMat.color.setHex(main);
+      if(reduceMotion)renderOnce();
+    }};
+    const th=THEMES[themeIdx];
+    bgApi.setColor(th.three,th.threeDim);
+
+    addEventListener('resize',()=>{
+      camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth,innerHeight);
+      if(reduceMotion)renderOnce();
+    });
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden){ running=false; cancelAnimationFrame(rafId); }
+      else if(!reduceMotion){ running=true; clock.getDelta(); frame(); }
+    });
+
+    if(reduceMotion){ renderOnce(); }
+    else frame();
+  }catch(err){
+    // background is decorative — fail silently, keep the terminal alive
+    console.warn('bg scene unavailable:', err && err.message ? err.message : err);
+  }
+})();
+
+/* ---------- go ---------- */
+applyTheme(themeIdx,false);
+updateChip();
+boot();
+</script>
+</body>
+</html>
